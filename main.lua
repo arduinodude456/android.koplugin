@@ -6,15 +6,16 @@ local TextViewer = require("ui/widget/textviewer")
 local Android = InputContainer:extend{name="kobo_android",is_doc_only=false}
 function Android:init() self.ui.menu:registerToMainMenu(self) end
 local function base_dir() return os.getenv("KOBO_ANDROID_DIR") or "/mnt/onboard/.adds/android" end
+local function shared_dir() return "/mnt/onboard/android-shared" end
 local function read_file(path)
     local f = io.open(path, "rb"); if not f then return "(no file: " .. path .. ")" end
     local s = f:read("*a") or ""; f:close(); return s
 end
 
 -- ---------------------------------------------------------------------------------------------------------
--- Download of the Android packages (GitHub releases) with a progress display, then install
+-- Download of the Android packages (GitHub releases) with a progress display
 --   1. release androidv1.0.0     -> ZIP, extracted into .adds (creates .adds/android)
---   2. release androidapkv1.0.0  -> APKs, copied to <android>/apps (installed by android.sh on the next start)
+--   2. release androidapkv1.0.0  -> APKs, saved to /mnt/onboard/android-shared (not installed automatically)
 -- ---------------------------------------------------------------------------------------------------------
 local DL_REPO = "arduinodude456/DApps"
 local PACKAGES = {
@@ -208,16 +209,16 @@ local function download_and_install()
         step = step + 1
         local item = todo[step]
         if not item then
-            finish("Done!\n\nThe Android system and the apps are installed in\n" .. parent_dir(base_dir()) .. ".\n\nRestart KOReader and open \"Android KitKat 4.4 (Chroot)\". The APKs in the apps folder are installed when Android starts (Android must be stopped now).")
+            finish("Done!\n\nThe Android system files are in\n" .. parent_dir(base_dir()) .. ".\n\nThe APKs were only saved to\n" .. shared_dir() .. "\nThey were not installed automatically. Open the shared folder in Android and install any APK manually.\n\nRestart KOReader and open \"Android KitKat 4.4 (Chroot)\".")
             return
         end
         local asset, kind = item.asset, item.kind
         local is_apk = asset.name:lower():match("%.apk$") ~= nil
-        local apps_dir = base_dir() .. "/apps"
+        local apk_dir = shared_dir()
         local dest
         if is_apk then
-            os.execute("mkdir -p " .. q(apps_dir))
-            dest = apps_dir .. "/" .. asset.name
+            os.execute("mkdir -p " .. q(apk_dir))
+            dest = apk_dir .. "/" .. asset.name
         else
             dest = "/mnt/onboard/" .. asset.name
         end
@@ -247,9 +248,9 @@ local function download_and_install()
                 -- This plugin (android.koplugin) stays untouched so the download feature is not overwritten.
                 unzip_job("-o -q " .. q(dest) .. " -x '*android.koplugin/*' -d " .. q(target),
                     "Extracting " .. asset.name .. " to " .. target, next_item)
-            else -- ZIP with APKs: flat copy of every .apk into the apps folder
-                os.execute("mkdir -p " .. q(apps_dir))
-                unzip_job("-o -j -q " .. q(dest) .. " '*.apk' -d " .. q(apps_dir),
+            else -- ZIP with APKs: flat copy of every .apk into the shared folder
+                os.execute("mkdir -p " .. q(apk_dir))
+                unzip_job("-o -j -q " .. q(dest) .. " '*.apk' -d " .. q(apk_dir),
                     "Extracting apps from " .. asset.name, next_item)
             end
         end
@@ -331,7 +332,7 @@ function Android:addToMainMenu(items)
         local tags = {}
         for _, p in ipairs(PACKAGES) do tags[#tags + 1] = p.tag end
         UIManager:show(ConfirmBox:new{
-            text="Download the Android system and the apps over Wi-Fi (releases "..table.concat(tags, ", ")..") and install them into "..parent_dir(base_dir()).."?\n\nNeeds free storage for the ZIP and the extracted files. Existing Android files are overwritten, Android must be stopped. An interrupted download can be resumed.",
+            text="Download the Android system and app packages over Wi-Fi (releases "..table.concat(tags, ", ").."). The Android system files go into "..parent_dir(base_dir()).."; APKs are only saved to "..shared_dir().." and are not installed automatically.\n\nNeeds free storage for the ZIP and the extracted files. Existing Android system files are overwritten, Android must be stopped. An interrupted download can be resumed.",
             ok_text="Download",
             ok_callback=download_and_install,
         })
